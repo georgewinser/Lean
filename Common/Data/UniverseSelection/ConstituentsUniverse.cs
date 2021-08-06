@@ -14,6 +14,7 @@
 */
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 
 namespace QuantConnect.Data.UniverseSelection
@@ -24,25 +25,30 @@ namespace QuantConnect.Data.UniverseSelection
     /// </summary>
     /// <remarks>Using this class allows a performance improvement, since there is no
     /// runtime logic computation required for selecting the <see cref="Symbol"/></remarks>
-    public class ConstituentsUniverse : FuncUniverse
+    public class ConstituentsUniverse<T> : FuncUniverse<T>
+        where T : BaseData
     {
         /// <summary>
         /// Creates a new instance of the <see cref="ConstituentsUniverse"/>
         /// </summary>
         /// <param name="symbol">The universe symbol</param>
         /// <param name="universeSettings">The universe settings to use</param>
-        /// <param name="type">The <see cref="ConstituentsUniverseData"/> type to use</param>
-        public ConstituentsUniverse(Symbol symbol, UniverseSettings universeSettings, Type type = null)
-           : this(new SubscriptionDataConfig(type ?? typeof(ConstituentsUniverseData),
-                   symbol,
-                   Resolution.Daily,
-                   TimeZones.NewYork,
-                   TimeZones.NewYork,
-                   false,
-                   false,
-                   true,
-                   true),
-               universeSettings)
+        /// <param name="constituentsFilter">User-provided function to filter coarse universe with</param>
+        public ConstituentsUniverse(
+            Symbol symbol, 
+            UniverseSettings universeSettings, 
+            Func<IEnumerable<T>, IEnumerable<Symbol>> constituentsFilter = null)
+            : this(new SubscriptionDataConfig(typeof(T),
+                    symbol,
+                    Resolution.Daily,
+                    TimeZones.NewYork,
+                    TimeZones.NewYork,
+                    false,
+                    false,
+                    true,
+                    true),
+                universeSettings,
+                constituentsFilter)
         {
         }
 
@@ -51,10 +57,14 @@ namespace QuantConnect.Data.UniverseSelection
         /// </summary>
         /// <param name="subscriptionDataConfig">The universe configuration to use</param>
         /// <param name="universeSettings">The universe settings to use</param>
-        public ConstituentsUniverse(SubscriptionDataConfig subscriptionDataConfig, UniverseSettings universeSettings)
+        /// <param name="constituentsFilter">User-provided function to filter coarse universe with</param>
+        public ConstituentsUniverse(
+            SubscriptionDataConfig subscriptionDataConfig, 
+            UniverseSettings universeSettings,
+            Func<IEnumerable<T>, IEnumerable<Symbol>> constituentsFilter = null)
             : base(subscriptionDataConfig,
                 universeSettings,
-                constituents =>
+                constituentsFilter ?? (constituents =>
                 {
                     var symbols = constituents.Select(baseData => baseData.Symbol).ToList();
                     // for performance, just compare to Symbol.None if we have 1 Symbol
@@ -63,14 +73,35 @@ namespace QuantConnect.Data.UniverseSelection
                         // no symbol selected
                         return Enumerable.Empty<Symbol>();
                     }
+
                     return symbols;
-                })
+                }))
         {
             if (!subscriptionDataConfig.IsCustomData)
             {
-                throw new InvalidOperationException($"{nameof(ConstituentsUniverse)} {nameof(SubscriptionDataConfig)}" +
+                throw new InvalidOperationException($"{typeof(T).Name} {nameof(SubscriptionDataConfig)}" +
                     $" only supports custom data property set to 'true'");
             }
+        }
+    }
+
+    /// <summary>
+    /// ConstituentsUniverse allows to perform universe selection based on an
+    /// already preselected set of <see cref="Symbol"/>.
+    /// </summary>
+    /// <remarks>Using this class allows a performance improvement, since there is no
+    /// runtime logic computation required for selecting the <see cref="Symbol"/></remarks>
+    public class ConstituentsUniverse : ConstituentsUniverse<ConstituentsUniverseData>
+    {
+        /// <summary>
+        /// Creates a new instance of the <see cref="ConstituentsUniverse"/>
+        /// </summary>
+        /// <param name="symbol">The universe symbol</param>
+        /// <param name="universeSettings">The universe settings to use</param>
+        /// <param name="type">The <see cref="ConstituentsUniverseData"/> type to use</param>
+        public ConstituentsUniverse(Symbol symbol, UniverseSettings universeSettings)
+            : base(symbol, universeSettings)
+        {
         }
     }
 }

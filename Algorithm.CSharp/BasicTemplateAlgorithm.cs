@@ -14,7 +14,10 @@
 */
 
 using System.Collections.Generic;
+using System.Linq;
 using QuantConnect.Data;
+using QuantConnect.Data.Market;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 
 namespace QuantConnect.Algorithm.CSharp
@@ -28,25 +31,39 @@ namespace QuantConnect.Algorithm.CSharp
     /// <meta name="tag" content="trading and orders" />
     public class BasicTemplateAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
     {
-        private Symbol _spy = QuantConnect.Symbol.Create("SPY", SecurityType.Equity, Market.USA);
-
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
         /// </summary>
         public override void Initialize()
         {
-            SetStartDate(2013, 10, 07);  //Set Start Date
-            SetEndDate(2013, 10, 11);    //Set End Date
-            SetCash(100000);             //Set Strategy Cash
+            SetStartDate(2011, 1, 1);
+            SetEndDate(2011, 4, 4);
+            SetCash(100000);
 
-            // Find more symbols here: http://quantconnect.com/data
-            // Forex, CFD, Equities Resolutions: Tick, Second, Minute, Hour, Daily.
-            // Futures Resolution: Tick, Second, Minute
-            // Options Resolution: Minute Only.
-            AddEquity("SPY", Resolution.Minute);
+            UniverseSettings.Resolution = Resolution.Hour;
+            var spy = AddEquity("QQQ", Resolution.Hour).Symbol;
+            AddUniverse(new ETFConstituentsUniverse(spy, UniverseSettings, FilterETFs));
+        }
 
-            // There are other assets with similar methods. See "Selecting Options" etc for more details.
-            // AddFuture, AddForex, AddCfd, AddOption
+        private IEnumerable<Symbol> CoarseFilter(IEnumerable<CoarseFundamental> coarse)
+        {
+            return coarse
+                .Where(c => c.DollarVolume >= 2000000m && !c.HasFundamentalData)
+                .Select(c => c.Symbol);
+        }
+
+        private IEnumerable<Symbol> FilterETFs(IEnumerable<ETFConstituentData> constituents)
+        {
+            Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss.fff}");
+            
+            foreach (var constituent in constituents)
+            {
+                //if (constituent.Weight >= 0.01m && constituent.Weight <= 0.1m)
+                //{
+                    Log($"EndTime: {constituent.EndTime:yyyy-MM-dd HH:mm:ss.fff} - {constituent.Symbol} -- Weight: {constituent.Weight}");
+                    yield return constituent.Symbol;
+                //}
+            }
         }
 
         /// <summary>
@@ -55,10 +72,31 @@ namespace QuantConnect.Algorithm.CSharp
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
         public override void OnData(Slice data)
         {
-            if (!Portfolio.Invested)
+            if (data.Bars.Count != 0)
             {
-                SetHoldings(_spy, 1);
-                Debug("Purchased Stock");
+                //Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss.fff}");
+            }
+            
+            foreach (var qb in data.Bars.Values)
+            {
+                //Log($"{qb.EndTime:yyyy-MM-dd HH:mm:ss.fff} - {qb.Symbol.Value} :: {qb}");
+            }
+        }
+
+        public override void OnSecuritiesChanged(SecurityChanges changes)
+        {
+            if (changes.AddedSecurities.Count != 0 || changes.RemovedSecurities.Count != 0)
+            {
+                Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss}");
+            }
+            if (changes.AddedSecurities.Count != 0)
+            {
+                Log($"Added:\n  {string.Join("\n  ", changes.AddedSecurities.Select(x => x.Symbol.Value + " -:- " + x.Symbol))}");
+            }
+
+            if (changes.RemovedSecurities.Count != 0)
+            {
+                Log($"Removed:\n  {string.Join("\n  ", changes.RemovedSecurities.Select(x => x.Symbol.Value + " -:- " + x.Symbol))}");
             }
         }
 
