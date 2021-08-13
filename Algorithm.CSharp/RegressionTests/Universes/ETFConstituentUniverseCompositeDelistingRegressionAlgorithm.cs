@@ -13,40 +13,51 @@
  * limitations under the License.
 */
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using QuantConnect.Data;
+using QuantConnect.Data.Market;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 
 namespace QuantConnect.Algorithm.CSharp
 {
     /// <summary>
-    /// Basic template algorithm simply initializes the date range and cash. This is a skeleton
-    /// framework you can use for designing an algorithm.
     /// </summary>
-    /// <meta name="tag" content="using data" />
-    /// <meta name="tag" content="using quantconnect" />
-    /// <meta name="tag" content="trading and orders" />
-    public class BasicTemplateAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
+    public class ETFConstituentUniverseCompositeDelistingRegressionAlgorithm : QCAlgorithm//, IRegressionAlgorithmDefinition
     {
-        private Symbol _spy = QuantConnect.Symbol.Create("SPY", SecurityType.Equity, Market.USA);
-
+        private Symbol _gdvd;
+        private Symbol _aapl;
+        private DateTime _delistingDate;
+        
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
         /// </summary>
         public override void Initialize()
         {
-            SetStartDate(2013, 10, 07);  //Set Start Date
-            SetEndDate(2013, 10, 11);    //Set End Date
-            SetCash(100000);             //Set Strategy Cash
+            SetStartDate(2020, 12, 1);
+            SetEndDate(2021, 1, 31);
+            SetCash(100000);
+            
+            UniverseSettings.Resolution = Resolution.Hour;
+            
+            _delistingDate = new DateTime(2021, 1, 20);
+            
+            _gdvd = AddEquity("GDVD", Resolution.Hour).Symbol;
+            _aapl = AddEquity("AAPL", Resolution.Hour).Symbol;
+            
+            AddUniverse(new ETFConstituentsUniverse(_gdvd, UniverseSettings, FilterETFs));
+        }
 
-            // Find more symbols here: http://quantconnect.com/data
-            // Forex, CFD, Equities Resolutions: Tick, Second, Minute, Hour, Daily.
-            // Futures Resolution: Tick, Second, Minute
-            // Options Resolution: Minute Only.
-            AddEquity("SPY", Resolution.Minute);
+        private IEnumerable<Symbol> FilterETFs(IEnumerable<ETFConstituentData> constituents)
+        {
+            if (UtcTime > _delistingDate)
+            {
+                throw new Exception($"Performing constituent universe selection on {UtcTime:yyyy-MM-dd HH:mm:ss.fff} after composite ETF has been delisted");
+            }
 
-            // There are other assets with similar methods. See "Selecting Options" etc for more details.
-            // AddFuture, AddForex, AddCfd, AddOption
+            return constituents.Select(x => x.Symbol);
         }
 
         /// <summary>
@@ -55,10 +66,35 @@ namespace QuantConnect.Algorithm.CSharp
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
         public override void OnData(Slice data)
         {
-            if (!Portfolio.Invested)
+            if (UtcTime >= new DateTime(2021, 1, 22))
             {
-                SetHoldings(_spy, 1);
-                Debug("Purchased Stock");
+                
+            }
+            if (data.Bars.Count != 0)
+            {
+                //Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss.fff}");
+            }
+            
+            foreach (var qb in data.Bars.Values)
+            {
+                //Log($"{qb.EndTime:yyyy-MM-dd HH:mm:ss.fff} - {qb.Symbol.Value} :: {qb}");
+            }
+        }
+
+        public override void OnSecuritiesChanged(SecurityChanges changes)
+        {
+            if (changes.AddedSecurities.Count != 0 || changes.RemovedSecurities.Count != 0)
+            {
+                Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss}");
+            }
+            if (changes.AddedSecurities.Count != 0)
+            {
+                Log($"Added:\n  {string.Join("\n  ", changes.AddedSecurities.Select(x => x.Symbol.Value + " -:- " + x.Symbol))}");
+            }
+
+            if (changes.RemovedSecurities.Count != 0)
+            {
+                Log($"Removed:\n  {string.Join("\n  ", changes.RemovedSecurities.Select(x => x.Symbol.Value + " -:- " + x.Symbol))}");
             }
         }
 

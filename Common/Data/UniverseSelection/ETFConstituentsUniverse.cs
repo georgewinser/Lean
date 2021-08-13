@@ -15,17 +15,22 @@ namespace QuantConnect.Data.UniverseSelection
 
         private static Symbol CreateConstituentUniverseETFSymbol(Symbol compositeSymbol)
         {
-            if (compositeSymbol.Value == _etfConstituentsUniverseIdentifier)
+            var guid = Guid.NewGuid().ToString();
+            var universeTicker = _etfConstituentsUniverseIdentifier + '-' + guid;
+            
+            // The universe might get mapped, but the ID Symbol won't, which
+            // will always be the universe ticker.
+            if (compositeSymbol.ID.Symbol == universeTicker)
             {
                 return compositeSymbol;
             }
             
             return new Symbol(
                 SecurityIdentifier.GenerateConstituentIdentifier(
-                    _etfConstituentsUniverseIdentifier,
+                    universeTicker,
                     compositeSymbol.SecurityType,
                     compositeSymbol.ID.Market),
-                _etfConstituentsUniverseIdentifier,
+                universeTicker,
                 compositeSymbol);
         }
     }

@@ -13,40 +13,70 @@
  * limitations under the License.
 */
 
+using System;
 using System.Collections.Generic;
+using System.Linq;
 using QuantConnect.Data;
+using QuantConnect.Data.UniverseSelection;
 using QuantConnect.Interfaces;
 
 namespace QuantConnect.Algorithm.CSharp
 {
     /// <summary>
-    /// Basic template algorithm simply initializes the date range and cash. This is a skeleton
-    /// framework you can use for designing an algorithm.
+    /// Tests a custom filter function when creating an ETF constituents universe for SPY
     /// </summary>
-    /// <meta name="tag" content="using data" />
-    /// <meta name="tag" content="using quantconnect" />
-    /// <meta name="tag" content="trading and orders" />
-    public class BasicTemplateAlgorithm : QCAlgorithm, IRegressionAlgorithmDefinition
+    public class ETFConstituentUniverseFilterFunctionRegressionAlgorithm : QCAlgorithm//, IRegressionAlgorithmDefinition
     {
-        private Symbol _spy = QuantConnect.Symbol.Create("SPY", SecurityType.Equity, Market.USA);
-
+        private Symbol _aapl;
+        private Symbol _spy;
+        private bool _filtered;
+        private bool _securitiesChanged;
+        private bool _receivedData;
+        
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
         /// </summary>
         public override void Initialize()
         {
-            SetStartDate(2013, 10, 07);  //Set Start Date
-            SetEndDate(2013, 10, 11);    //Set End Date
-            SetCash(100000);             //Set Strategy Cash
+            SetStartDate(2020, 12, 1);
+            SetEndDate(2021, 1, 31);
+            SetCash(100000);
 
-            // Find more symbols here: http://quantconnect.com/data
-            // Forex, CFD, Equities Resolutions: Tick, Second, Minute, Hour, Daily.
-            // Futures Resolution: Tick, Second, Minute
-            // Options Resolution: Minute Only.
-            AddEquity("SPY", Resolution.Minute);
+            UniverseSettings.Resolution = Resolution.Hour;
+            
+            _spy = AddEquity("SPY", Resolution.Daily).Symbol;
+            _aapl = QuantConnect.Symbol.Create("AAPL", SecurityType.Equity, Market.USA);
+            
+            AddUniverse(new ETFConstituentsUniverse(_spy, UniverseSettings, FilterETFs));
+        }
 
-            // There are other assets with similar methods. See "Selecting Options" etc for more details.
-            // AddFuture, AddForex, AddCfd, AddOption
+        /// <summary>
+        /// Filters ETFs, performing some sanity checks
+        /// </summary>
+        /// <param name="constituents">Constituents of the ETF universe added above</param>
+        /// <returns>Constituent Symbols to add to algorithm</returns>
+        /// <exception cref="ArgumentException">Constituents collection was not structured as expected</exception>
+        private IEnumerable<Symbol> FilterETFs(IEnumerable<ETFConstituentData> constituents)
+        {
+            var constituentsData = constituents.ToHashSet();
+            var constituentsSymbols = constituentsData.Select(x => x.Symbol).ToList();
+            if (constituentsData.Count == 0)
+            {
+                throw new ArgumentException($"Constituents collection is empty on {UtcTime:yyyy-MM-dd HH:mm:ss.fff}");
+            }
+            if (!constituentsSymbols.Contains(_aapl))
+            {
+                throw new ArgumentException("AAPL is not in the constituents data provided to the algorithm");
+            }
+
+            var aaplData = constituentsData.Single(x => x.Symbol == _aapl);
+            if (aaplData.Weight == 0m)
+            {
+                throw new ArgumentException("AAPL weight is expected to be a non-zero value");
+            }
+
+            _filtered = true;
+            return constituentsSymbols;
         }
 
         /// <summary>
@@ -55,10 +85,50 @@ namespace QuantConnect.Algorithm.CSharp
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
         public override void OnData(Slice data)
         {
-            if (!Portfolio.Invested)
+            if (!_filtered && data.Bars.Count != 0 && data.Bars.ContainsKey(_aapl))
             {
-                SetHoldings(_spy, 1);
-                Debug("Purchased Stock");
+                throw new Exception("AAPL TradeBar data added to algorithm before constituent universe selection took place");
+            }
+            if (data.Bars.Count != 0 && !data.Bars.ContainsKey(_aapl))
+            {
+                throw new Exception($"Expected AAPL TradeBar data in OnData on {UtcTime:yyyy-MM-dd HH:mm:ss}");
+            }
+
+            _receivedData = true;
+        }
+
+        /// <summary>
+        /// Checks if new securities have been added to the algorithm after universe selection has occurred
+        /// </summary>
+        /// <param name="changes">Security changes</param>
+        /// <exception cref="ArgumentException">Expected number of stocks were not added to the algorithm</exception>
+        public override void OnSecuritiesChanged(SecurityChanges changes)
+        {
+            if (_filtered && !_securitiesChanged && changes.AddedSecurities.Count < 500)
+            {
+                throw new ArgumentException($"Added SPY S&P 500 ETF to algorithm, but less than 500 equities were loaded (added {changes.AddedSecurities.Count} securities)");
+            }
+
+            _securitiesChanged = true;
+        }
+
+        /// <summary>
+        /// Ensures that all expected events were triggered by the end of the algorithm
+        /// </summary>
+        /// <exception cref="Exception">An expected event didn't happen</exception>
+        public override void OnEndOfAlgorithm()
+        {
+            if (!_filtered)
+            {
+                throw new Exception("Universe selection was never triggered");
+            }
+            if (!_securitiesChanged)
+            {
+                throw new Exception("Security changes never propagated to the algorithm");
+            }
+            if (!_receivedData)
+            {
+                throw new Exception("Data was never loaded for the S&P 500 constituent AAPL");
             }
         }
 
