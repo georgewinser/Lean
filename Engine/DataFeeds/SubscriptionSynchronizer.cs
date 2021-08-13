@@ -18,6 +18,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using QuantConnect.Data.Market;
 using QuantConnect.Data.UniverseSelection;
 
 namespace QuantConnect.Lean.Engine.DataFeeds
@@ -110,16 +111,6 @@ namespace QuantConnect.Lean.Engine.DataFeeds
 
                         if (subscription.EndOfStream)
                         {
-                            if (subscription.IsUniverseSelectionSubscription)
-                            {
-                                var universe = subscription.Universes.Single();
-                                // check if a universe selection isn't already scheduled for this disposed universe
-                                if (universeData == null || !universeData.ContainsKey(universe))
-                                {
-                                    RemoveUniverseSubscription(subscription, universeData, frontierUtc);
-                                }
-                            }
-
                             OnSubscriptionFinished(subscription);
                             continue;
                         }
@@ -129,16 +120,6 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                         {
                             if (!subscription.MoveNext())
                             {
-                                if (subscription.IsUniverseSelectionSubscription)
-                                {
-                                    var universe = subscription.Universes.Single();
-                                    // check if a universe selection isn't already scheduled for this disposed universe
-                                    if (universeData == null || !universeData.ContainsKey(universe))
-                                    {
-                                        RemoveUniverseSubscription(subscription, universeData, frontierUtc);
-                                    }
-                                }
-
                                 OnSubscriptionFinished(subscription);
                                 continue;
                             }
@@ -158,20 +139,15 @@ namespace QuantConnect.Lean.Engine.DataFeeds
                                 );
                             }
 
+                            if (subscription.IsUniverseSelectionSubscription && subscription.Current.Data is Delisting)
+                            {
+                                subscription.Universes.Single().Dispose();
+                            }
+
                             packet.Add(subscription.Current.Data);
 
                             if (!subscription.MoveNext())
                             {
-                                if (subscription.IsUniverseSelectionSubscription)
-                                {
-                                    var universe = subscription.Universes.Single();
-                                    // check if a universe selection isn't already scheduled for this disposed universe
-                                    if (universeData == null || !universeData.ContainsKey(universe))
-                                    {
-                                        RemoveUniverseSubscription(subscription, universeData, frontierUtc);
-                                    }
-                                }
-
                                 delayedSubscriptionFinished.Enqueue(subscription);
                                 break;
                             }
@@ -302,24 +278,6 @@ namespace QuantConnect.Lean.Engine.DataFeeds
         public DateTime GetUtcNow()
         {
             return _frontierTimeProvider.GetUtcNow();
-        }
-
-        private void RemoveUniverseSubscription(
-            Subscription subscription,
-            Dictionary<Universe, BaseDataCollection> universeData,
-            DateTime frontierUtc
-            )
-        {
-            if (subscription.IsUniverseSelectionSubscription)
-            {
-                var universe = subscription.Universes.Single();
-                universe.Dispose();
-
-
-                // we force trigger one last universe selection for this disposed universe, so it deselects all subscriptions it added
-                universeData[universe] =
-                    new BaseDataCollection(frontierUtc, subscription.Configuration.Symbol);
-            }
         }
     }
 }

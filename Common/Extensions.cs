@@ -3150,17 +3150,17 @@ namespace QuantConnect
 
             // This filter does not apply to auxiliary data outside of delisting/splits/dividends so lets those emit
             var type = data.GetType();
-            
+
             // We don't want to pump in any data to `Universe.SelectSymbols(...)` if the
             // type is not configured to be consumed by the universe. This change fixes
             // a case where a `SymbolChangedEvent` was being passed to an ETF constituent universe
             // for filtering/selection, and would result in either a runtime error
             // if casting into the expected type explicitly, or call the filter function with
             // no data being provided, resulting in all universe Symbols being de-selected.
-            //if (isUniverse && !type.IsAssignableFrom(config.Type))
-            //{
-            //    return false;
-            //}
+            if (isUniverse && type == typeof(Delisting))
+            {
+                return ((Delisting)data).Type == DelistingType.Delisted;
+            }
             
             if (!(type == typeof(Delisting) || type == typeof(Split) || type == typeof(Dividend)))
             {
