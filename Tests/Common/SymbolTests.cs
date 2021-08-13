@@ -499,5 +499,28 @@ namespace QuantConnect.Tests.Common
                 });
             }
         }
+
+        public void SymbolAndUnderlyingSymbolsMapped(string ticker, string mappedTicker, params string[] sids)
+        {
+            var symbol = new Symbol(SecurityIdentifier.Parse(string.Join("|", sids)), ticker);
+            var symbolChain = symbol;
+
+            do
+            {
+                Assert.AreEqual(symbolChain.Value, ticker);
+                symbolChain = symbol.Underlying;
+            }
+            while (symbolChain != null);
+
+            symbol = symbol.UpdateMappedSymbol(mappedTicker);
+            symbolChain = symbol;
+
+            do
+            {
+                Assert.AreEqual(symbolChain.SecurityType.RequiresMapping(), symbolChain.Value == mappedTicker);
+                symbolChain = symbolChain.Underlying;
+            }
+            while (symbolChain != null);
+        }
     }
 }

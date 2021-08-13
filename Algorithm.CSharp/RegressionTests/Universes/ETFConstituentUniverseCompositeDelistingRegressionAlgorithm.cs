@@ -43,9 +43,9 @@ namespace QuantConnect.Algorithm.CSharp
             UniverseSettings.Resolution = Resolution.Hour;
             
             _delistingDate = new DateTime(2021, 1, 20);
-            
-            _gdvd = AddEquity("GDVD", Resolution.Hour).Symbol;
+
             _aapl = AddEquity("AAPL", Resolution.Hour).Symbol;
+            _gdvd = AddEquity("GDVD", Resolution.Hour).Symbol;
             
             AddUniverse(new ETFConstituentsUniverse(_gdvd, UniverseSettings, FilterETFs));
         }
@@ -66,35 +66,29 @@ namespace QuantConnect.Algorithm.CSharp
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
         public override void OnData(Slice data)
         {
-            if (UtcTime >= new DateTime(2021, 1, 22))
+            if (UtcTime > _delistingDate && data.Keys.Any(x => x != _aapl))
             {
-                
-            }
-            if (data.Bars.Count != 0)
-            {
-                //Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss.fff}");
-            }
-            
-            foreach (var qb in data.Bars.Values)
-            {
-                //Log($"{qb.EndTime:yyyy-MM-dd HH:mm:ss.fff} - {qb.Symbol.Value} :: {qb}");
+                throw new Exception($"Received unexpected slice in OnData(...) after universe was deselected");
             }
         }
 
         public override void OnSecuritiesChanged(SecurityChanges changes)
         {
-            if (changes.AddedSecurities.Count != 0 || changes.RemovedSecurities.Count != 0)
+            if (changes.AddedSecurities.Count != 0 && UtcTime > _delistingDate)
             {
-                Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss}");
+                throw new Exception("New securities added after ETF constituents were delisted");
             }
-            if (changes.AddedSecurities.Count != 0)
-            {
-                Log($"Added:\n  {string.Join("\n  ", changes.AddedSecurities.Select(x => x.Symbol.Value + " -:- " + x.Symbol))}");
-            }
+        }
 
-            if (changes.RemovedSecurities.Count != 0)
+        public override void OnEndOfAlgorithm()
+        {
+            if (UniverseManager.Keys.Any(x => x.Underlying == _gdvd))
             {
-                Log($"Removed:\n  {string.Join("\n  ", changes.RemovedSecurities.Select(x => x.Symbol.Value + " -:- " + x.Symbol))}");
+                throw new Exception("ETF constituent universe was not removed from the algorithm after delisting");
+            }
+            if (Securities.Count > 2)
+            {
+                throw new Exception($"Expected less than 2 securities after algorithm ended, found {Securities.Count}");
             }
         }
 

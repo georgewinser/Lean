@@ -77,7 +77,7 @@ namespace QuantConnect.Data.UniverseSelection
                     config.Market,
                     "universes",
                     "etf",
-                    config.MappedSymbol.ToLowerInvariant(),
+                    config.Symbol.Underlying.Value.ToLowerInvariant(),
                     $"{date:yyyyMMdd}.csv"),
                 SubscriptionTransportMedium.LocalFile,
                 FileFormat.Csv);

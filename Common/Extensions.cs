@@ -3157,9 +3157,9 @@ namespace QuantConnect
             // for filtering/selection, and would result in either a runtime error
             // if casting into the expected type explicitly, or call the filter function with
             // no data being provided, resulting in all universe Symbols being de-selected.
-            if (isUniverse && type == typeof(Delisting))
+            if (isUniverse && !type.IsAssignableFrom(config.Type))
             {
-                return ((Delisting)data).Type == DelistingType.Delisted;
+                return (data as Delisting)?.Type == DelistingType.Delisted;
             }
             
             if (!(type == typeof(Delisting) || type == typeof(Split) || type == typeof(Dividend)))

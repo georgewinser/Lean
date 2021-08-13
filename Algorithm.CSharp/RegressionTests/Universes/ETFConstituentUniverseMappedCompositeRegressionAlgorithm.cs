@@ -13,12 +13,11 @@
  * limitations under the License.
 */
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using QuantConnect.Data;
-using QuantConnect.Data.Market;
 using QuantConnect.Data.UniverseSelection;
-using QuantConnect.Interfaces;
 
 namespace QuantConnect.Algorithm.CSharp
 {
@@ -31,6 +30,12 @@ namespace QuantConnect.Algorithm.CSharp
     /// <meta name="tag" content="trading and orders" />
     public class ETFConstituentUniverseMappedCompositeRegressionAlgorithm: QCAlgorithm//, IRegressionAlgorithmDefinition
     {
+        private Symbol _aapl;
+        private Symbol _qqq;
+        private Dictionary<DateTime, int> _filterDateConstituentSymbolCount = new Dictionary<DateTime, int>();
+        private Dictionary<DateTime, bool> _constituentDataEncountered = new Dictionary<DateTime, bool>();
+        private HashSet<Symbol> _constituentSymbols = new HashSet<Symbol>();
+        
         /// <summary>
         /// Initialise the data and resolution required, as well as the cash and start-end dates for your algorithm. All algorithms must initialized.
         /// </summary>
@@ -41,29 +46,27 @@ namespace QuantConnect.Algorithm.CSharp
             SetCash(100000);
 
             UniverseSettings.Resolution = Resolution.Hour;
-            var spy = AddEquity("QQQ", Resolution.Hour).Symbol;
-            AddUniverse(new ETFConstituentsUniverse(spy, UniverseSettings, FilterETFs));
-        }
 
-        private IEnumerable<Symbol> CoarseFilter(IEnumerable<CoarseFundamental> coarse)
-        {
-            return coarse
-                .Where(c => c.DollarVolume >= 2000000m && !c.HasFundamentalData)
-                .Select(c => c.Symbol);
+            _aapl = QuantConnect.Symbol.Create("AAPL", SecurityType.Equity, Market.USA);
+            _qqq = AddEquity("QQQ", Resolution.Hour).Symbol;
+            AddUniverse(new ETFConstituentsUniverse(_qqq, UniverseSettings, FilterETFs));
         }
 
         private IEnumerable<Symbol> FilterETFs(IEnumerable<ETFConstituentData> constituents)
         {
-            Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss.fff}");
-            
-            foreach (var constituent in constituents)
+            var constituentSymbols = constituents.Select(x => x.Symbol).ToHashSet();
+            if (!constituentSymbols.Contains(_aapl))
             {
-                //if (constituent.Weight >= 0.01m && constituent.Weight <= 0.1m)
-                //{
-                    Log($"EndTime: {constituent.EndTime:yyyy-MM-dd HH:mm:ss.fff} - {constituent.Symbol} -- Weight: {constituent.Weight}");
-                    yield return constituent.Symbol;
-                //}
+                throw new Exception("AAPL not found in QQQ constituents");
             }
+            
+            _filterDateConstituentSymbolCount[UtcTime] = constituentSymbols.Count;
+            foreach (var symbol in constituentSymbols)
+            {
+                _constituentSymbols.Add(symbol);
+            }
+            
+            return constituentSymbols;
         }
 
         /// <summary>
@@ -72,31 +75,35 @@ namespace QuantConnect.Algorithm.CSharp
         /// <param name="data">Slice object keyed by symbol containing the stock data</param>
         public override void OnData(Slice data)
         {
-            if (data.Bars.Count != 0)
+            if (!_constituentDataEncountered.ContainsKey(UtcTime.Date))
             {
-                //Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss.fff}");
+                _constituentDataEncountered[UtcTime.Date] = false;
             }
-            
-            foreach (var qb in data.Bars.Values)
+
+            if (_constituentSymbols.Intersect(data.Keys).Any())
             {
-                //Log($"{qb.EndTime:yyyy-MM-dd HH:mm:ss.fff} - {qb.Symbol.Value} :: {qb}");
+                _constituentDataEncountered[UtcTime.Date] = true;
             }
         }
 
-        public override void OnSecuritiesChanged(SecurityChanges changes)
+        public override void OnEndOfAlgorithm()
         {
-            if (changes.AddedSecurities.Count != 0 || changes.RemovedSecurities.Count != 0)
+            if (_filterDateConstituentSymbolCount.Count != 3)
             {
-                Log($"\n\nUTC: {UtcTime:yyyy-MM-dd HH:mm:ss}");
-            }
-            if (changes.AddedSecurities.Count != 0)
-            {
-                Log($"Added:\n  {string.Join("\n  ", changes.AddedSecurities.Select(x => x.Symbol.Value + " -:- " + x.Symbol))}");
+                throw new Exception($"ETF constituent filtering function was not called 3 times (actual: {_filterDateConstituentSymbolCount.Count}");
             }
 
-            if (changes.RemovedSecurities.Count != 0)
+            foreach (var kvp in _filterDateConstituentSymbolCount)
             {
-                Log($"Removed:\n  {string.Join("\n  ", changes.RemovedSecurities.Select(x => x.Symbol.Value + " -:- " + x.Symbol))}");
+                if (kvp.Value < 25)
+                {
+                    throw new Exception($"Expected 25 or more constituents in filter function on {kvp.Key:yyyy-MM-dd HH:mm:ss.fff}, found {kvp.Value}");
+                }
+            }
+
+            if (!_constituentDataEncountered.Values.All(x => x))
+            {
+                throw new Exception("Received data in OnData(...) but it did not contain any constituent data on that day");
             }
         }
 
