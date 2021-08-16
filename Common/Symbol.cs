@@ -338,6 +338,9 @@ namespace QuantConnect
                 throw new ArgumentException($"SecurityType {ID.SecurityType} can not be mapped.");
             }
 
+            // Avoid updating the current instance's underlying Symbol.
+            var underlyingSymbol = Underlying;
+
             // Some universe Symbols, such as Constituent ETF universe Symbols and mapped custom data Symbols, have an
             // underlying equity ETF Symbol as their underlying. When we're checking to see if a specific BaseData
             // instance requires mapping, only the parent Symbol will be updated, which might not even need to be mapped
@@ -345,7 +348,7 @@ namespace QuantConnect
             // This will ensure that we map all of the underlying Symbol(s) that also require mapping updates.
             if (HasUnderlying)
             {
-                Underlying = Underlying.UpdateMappedSymbol(mappedSymbol);
+                underlyingSymbol = Underlying.UpdateMappedSymbol(mappedSymbol);
             }
 
             if (SecurityType != SecurityType.Base && !SecurityType.RequiresMapping())
@@ -360,7 +363,7 @@ namespace QuantConnect
                     : Value;
             }
 
-            return new Symbol(ID, mappedSymbol, Underlying);
+            return new Symbol(ID, mappedSymbol, underlyingSymbol);
         }
 
         /// <summary>
